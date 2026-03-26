@@ -6,7 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from PyQt6.QtCore import QSettings, Qt, pyqtSignal
+from PyQt6.QtCore import QProcess, QSettings, Qt, pyqtSignal
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QFormLayout,
@@ -100,6 +100,17 @@ class JobRunnerPanel(QWidget):
         btn_layout.addWidget(self._clear_btn)
         layout.addLayout(btn_layout)
 
+        # --- Open in CAE button ---
+        cae_layout = QHBoxLayout()
+        self._cae_btn = QPushButton("Open in Abaqus CAE")
+        self._cae_btn.setFixedHeight(30)
+        self._cae_btn.setEnabled(False)
+        self._cae_btn.setToolTip("Launch Abaqus CAE with this job's .cae file")
+        self._cae_btn.clicked.connect(self._on_open_cae_clicked)
+        cae_layout.addWidget(self._cae_btn)
+        cae_layout.addStretch()
+        layout.addLayout(cae_layout)
+
         # --- Output log ---
         log_label = QLabel("Output:")
         log_label.setStyleSheet("color: #888; font-size: 11px;")
@@ -124,10 +135,13 @@ class JobRunnerPanel(QWidget):
         if job is None:
             self._job_label.setText("No job selected")
             self._run_btn.setEnabled(False)
+            self._cae_btn.setEnabled(False)
         else:
             self._job_label.setText(job.display_name)
             has_inp = job.inp_file is not None and job.inp_file.exists()
+            has_cae = job.cae_file is not None and job.cae_file.exists()
             self._run_btn.setEnabled(has_inp and not self._runner.is_running)
+            self._cae_btn.setEnabled(has_cae)
 
     def set_abaqus_exe(self, path: str) -> None:
         self._runner.abaqus_exe = path
@@ -137,6 +151,30 @@ class JobRunnerPanel(QWidget):
         return self._runner
 
     # ------------------------------------------------------------------ #
+
+    def open_cae(self, job: AbaqusJob) -> None:
+        """Launch Abaqus CAE for the given job (called from browser context menu too)."""
+        if not job.cae_file or not job.cae_file.exists():
+            self._append_output(f"[AJM] No .cae file found for {job.stem}\n")
+            return
+        args = ["cae", f"database={job.cae_file.name}"]
+        ok, _pid = QProcess.startDetached(
+            self._runner.abaqus_exe, args, str(job.folder)
+        )
+        if ok:
+            self._append_output(
+                f"[AJM] Launching CAE: {self._runner.abaqus_exe} {' '.join(args)}\n"
+                f"[AJM] Working directory: {job.folder}\n"
+            )
+        else:
+            self._append_output(
+                f"[AJM] ERROR: Failed to launch CAE. "
+                f"Check Settings > Abaqus Executable Path.\n"
+            )
+
+    def _on_open_cae_clicked(self) -> None:
+        if self._current_job:
+            self.open_cae(self._current_job)
 
     def _on_run_clicked(self) -> None:
         if self._current_job is None:

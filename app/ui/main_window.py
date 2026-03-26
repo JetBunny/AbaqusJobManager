@@ -6,8 +6,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import List, Optional
 
-from PyQt6.QtCore import QSettings, QSize, Qt
-from PyQt6.QtGui import QAction, QIcon
+from PyQt6.QtCore import QSettings, QSize, Qt, QTimer
+from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
     QFileDialog,
     QLabel,
@@ -22,9 +22,13 @@ from app.core.models import AbaqusJob
 from app.core.scanner import JobScanner
 from app.ui.file_viewer import FileViewerWidget
 from app.ui.job_browser import JobBrowserWidget
+from app.ui.job_compare_widget import JobCompareWidget
 from app.ui.job_runner_panel import JobRunnerPanel
+from app.ui.log_tail_widget import LogTailWidget
 from app.ui.progress_monitor import ProgressMonitorWidget
 from app.ui.settings_dialog import SettingsDialog
+
+_AUTO_REFRESH_INTERVAL_MS = 30_000   # 30 seconds
 
 
 class MainWindow(QMainWindow):
@@ -38,6 +42,7 @@ class MainWindow(QMainWindow):
 
         self._build_ui()
         self._build_toolbar()
+        self._build_auto_refresh_timer()
         self._restore_state()
 
     # ------------------------------------------------------------------ #
@@ -52,14 +57,20 @@ class MainWindow(QMainWindow):
         self._runner_panel   = JobRunnerPanel()
         self._progress_panel = ProgressMonitorWidget()
         self._file_viewer    = FileViewerWidget()
+        self._log_tail       = LogTailWidget()
+        self._compare_widget = JobCompareWidget()
 
         self._right_tabs.addTab(self._runner_panel,   "Run")
         self._right_tabs.addTab(self._progress_panel, "Progress")
         self._right_tabs.addTab(self._file_viewer,    "Files")
+        self._right_tabs.addTab(self._log_tail,       "MSG Tail")
+        self._right_tabs.addTab(self._compare_widget, "Compare")
 
         # ── Left-side browser ─────────────────────────────────────── #
         self._browser = JobBrowserWidget()
         self._browser.job_selected.connect(self._on_job_selected)
+        self._browser.jobs_compare_selected.connect(self._compare_widget.set_jobs)
+        self._browser.open_cae_requested.connect(self._runner_panel.open_cae)
 
         # ── Splitter ──────────────────────────────────────────────── #
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -92,10 +103,22 @@ class MainWindow(QMainWindow):
         tb.addAction(open_action)
 
         refresh_action = QAction("Refresh", self)
-        refresh_action.setToolTip("Rescan the current folder")
+        refresh_action.setToolTip("Rescan the current folder (F5)")
         refresh_action.setShortcut("F5")
         refresh_action.triggered.connect(self._refresh)
         tb.addAction(refresh_action)
+
+        tb.addSeparator()
+
+        # Auto-refresh toggle
+        self._auto_refresh_action = QAction("Auto-Refresh: ON", self)
+        self._auto_refresh_action.setToolTip(
+            "Toggle automatic folder rescan every 30 seconds"
+        )
+        self._auto_refresh_action.setCheckable(True)
+        self._auto_refresh_action.setChecked(True)
+        self._auto_refresh_action.toggled.connect(self._on_auto_refresh_toggled)
+        tb.addAction(self._auto_refresh_action)
 
         tb.addSeparator()
 
@@ -103,6 +126,11 @@ class MainWindow(QMainWindow):
         settings_action.setToolTip("Application settings")
         settings_action.triggered.connect(self._open_settings)
         tb.addAction(settings_action)
+
+    def _build_auto_refresh_timer(self) -> None:
+        self._auto_refresh_timer = QTimer(self)
+        self._auto_refresh_timer.setInterval(_AUTO_REFRESH_INTERVAL_MS)
+        self._auto_refresh_timer.timeout.connect(self._auto_refresh)
 
     # ------------------------------------------------------------------ #
     # Actions
@@ -116,25 +144,42 @@ class MainWindow(QMainWindow):
         )
         if folder:
             self._root_folder = Path(folder)
-            self._scan_and_refresh()
+            self._scan_and_refresh(notify_panels=True)
             self._save_state()
+            # Start auto-refresh once a folder is open
+            if self._auto_refresh_action.isChecked():
+                self._auto_refresh_timer.start()
 
     def _refresh(self) -> None:
         if self._root_folder:
-            self._scan_and_refresh()
+            self._scan_and_refresh(notify_panels=True)
 
-    def _scan_and_refresh(self) -> None:
+    def _auto_refresh(self) -> None:
+        """Background rescan — preserves selection, does not disrupt running jobs."""
+        if self._root_folder and not self._runner_panel.runner.is_running:
+            self._scan_and_refresh(notify_panels=False)
+
+    def _scan_and_refresh(self, notify_panels: bool = True) -> None:
         if not self._root_folder:
             return
-        self.statusBar().showMessage(f"Scanning {self._root_folder} …")
         scanner = JobScanner(self._root_folder)
         self._jobs = scanner.scan()
-        self._browser.refresh(self._jobs)
+        self._browser.refresh(self._jobs, preserve_selection=True)
         count = len(self._jobs)
         self._status_folder.setText(f"  {self._root_folder}")
-        self.statusBar().showMessage(
-            f"Found {count} job{'s' if count != 1 else ''}"
-        )
+        if notify_panels:
+            self.statusBar().showMessage(
+                f"Found {count} job{'s' if count != 1 else ''}"
+            )
+
+    def _on_auto_refresh_toggled(self, checked: bool) -> None:
+        if checked:
+            self._auto_refresh_action.setText("Auto-Refresh: ON")
+            if self._root_folder:
+                self._auto_refresh_timer.start()
+        else:
+            self._auto_refresh_action.setText("Auto-Refresh: OFF")
+            self._auto_refresh_timer.stop()
 
     def _open_settings(self) -> None:
         dlg = SettingsDialog(self)
@@ -149,6 +194,7 @@ class MainWindow(QMainWindow):
         self._runner_panel.set_job(job)
         self._progress_panel.set_job(job)
         self._file_viewer.set_job(job)
+        self._log_tail.set_job(job)
 
     # ------------------------------------------------------------------ #
     # Job runner lifecycle
@@ -156,17 +202,17 @@ class MainWindow(QMainWindow):
 
     def _on_job_started(self) -> None:
         self._progress_panel.start_monitoring()
+        self._log_tail.start_monitoring()
         self.statusBar().showMessage("Job running…")
+        # Switch to MSG Tail tab automatically so user sees live output
+        self._right_tabs.setCurrentWidget(self._log_tail)
 
     def _on_job_finished(self, exit_code: int) -> None:
         self._progress_panel.on_job_finished()
+        self._log_tail.on_job_finished()
         msg = "Job completed successfully." if exit_code == 0 else f"Job exited with code {exit_code}."
         self.statusBar().showMessage(msg)
-        # Refresh status column for the currently selected job
-        # Find the job that was running
-        runner = self._runner_panel.runner
-        # Re-scan to pick up new status files
-        self._scan_and_refresh()
+        self._scan_and_refresh(notify_panels=True)
 
     # ------------------------------------------------------------------ #
     # Persistent state
@@ -174,8 +220,9 @@ class MainWindow(QMainWindow):
 
     def _save_state(self) -> None:
         s = QSettings("AbaqusJobManager", "AJM")
-        s.setValue("window/geometry", self.saveGeometry())
-        s.setValue("window/state",    self.saveState())
+        s.setValue("window/geometry",     self.saveGeometry())
+        s.setValue("window/state",        self.saveState())
+        s.setValue("window/auto_refresh", self._auto_refresh_action.isChecked())
         if self._root_folder:
             s.setValue("window/last_folder", str(self._root_folder))
 
@@ -187,14 +234,20 @@ class MainWindow(QMainWindow):
         state = s.value("window/state")
         if state:
             self.restoreState(state)
+
+        auto = s.value("window/auto_refresh", True)
+        auto_bool = auto if isinstance(auto, bool) else str(auto).lower() != "false"
+        self._auto_refresh_action.setChecked(auto_bool)
+
         last = s.value("window/last_folder")
         if last:
             folder = Path(last)
             if folder.is_dir():
                 self._root_folder = folder
-                self._scan_and_refresh()
+                self._scan_and_refresh(notify_panels=True)
+                if auto_bool:
+                    self._auto_refresh_timer.start()
 
-        # Apply abaqus exe from settings
         exe = s.value("abaqus/exe", None)
         if exe:
             self._runner_panel.set_abaqus_exe(str(exe))
