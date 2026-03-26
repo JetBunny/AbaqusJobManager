@@ -1,0 +1,45 @@
+# Claude Code local settings
+.claude/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Qt
+*.qmlc
+*.jsc
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Abaqus scratch files
+*.lck
+*.023
+*.SMABulk
+*.SMAManifest
