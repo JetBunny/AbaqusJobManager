@@ -4,7 +4,6 @@ Abaqus Job Manager — entry point.
 import sys
 from pathlib import Path
 
-from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication
 
 # Make sure our package root is importable regardless of cwd
@@ -34,9 +33,6 @@ def main() -> int:
     app.setApplicationName("Abaqus Job Manager")
     app.setOrganizationName("AbaqusJobManager")
     app.setApplicationDisplayName("Abaqus Job Manager")
-
-    # Enable High-DPI support
-    app.setAttribute(Qt.ApplicationAttribute.AA_UseHighDpiPixmaps, True)
 
     load_stylesheet(app)
 
