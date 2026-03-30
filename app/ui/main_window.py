@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from app.core.models import AbaqusJob
+from app.core.models import AbaqusJob, JobStatus
 from app.core.scanner import JobScanner
 from app.ui.file_viewer import FileViewerWidget
 from app.ui.job_browser import JobBrowserWidget
@@ -36,6 +36,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self._root_folder: Optional[Path] = None
         self._jobs: List[AbaqusJob] = []
+        self._running_job_stem: Optional[str] = None
 
         self.setWindowTitle("Abaqus Job Manager")
         self.setMinimumSize(1100, 700)
@@ -164,6 +165,16 @@ class MainWindow(QMainWindow):
             return
         scanner = JobScanner(self._root_folder)
         self._jobs = scanner.scan()
+
+        # If a job is actively running, the scanner may not see its .lck file
+        # in time, or the new job objects won't carry the in-memory RUNNING flag.
+        # Re-apply it here so the status column stays correct during the run.
+        if self._running_job_stem:
+            for job in self._jobs:
+                if job.stem == self._running_job_stem:
+                    job.status = JobStatus.RUNNING
+                    break
+
         self._browser.refresh(self._jobs, preserve_selection=True)
         count = len(self._jobs)
         self._status_folder.setText(f"  {self._root_folder}")
@@ -204,10 +215,17 @@ class MainWindow(QMainWindow):
         self._progress_panel.start_monitoring()
         self._log_tail.start_monitoring()
         self.statusBar().showMessage("Job running…")
+        # Track which job is running so rescans keep the RUNNING status correct
+        job = self._runner_panel.current_job
+        if job:
+            self._running_job_stem = job.stem
+            job.status = JobStatus.RUNNING
+            self._browser.refresh_job_status(job)
         # Switch to MSG Tail tab automatically so user sees live output
         self._right_tabs.setCurrentWidget(self._log_tail)
 
     def _on_job_finished(self, exit_code: int) -> None:
+        self._running_job_stem = None
         self._progress_panel.on_job_finished()
         self._log_tail.on_job_finished()
         msg = "Job completed successfully." if exit_code == 0 else f"Job exited with code {exit_code}."

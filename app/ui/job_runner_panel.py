@@ -150,6 +150,10 @@ class JobRunnerPanel(QWidget):
     def runner(self) -> AbaqusJobRunner:
         return self._runner
 
+    @property
+    def current_job(self) -> Optional[AbaqusJob]:
+        return self._current_job
+
     # ------------------------------------------------------------------ #
 
     def open_cae(self, job: AbaqusJob) -> None:

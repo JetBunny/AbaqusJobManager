@@ -74,11 +74,19 @@ class AbaqusJob:
         Infer job status from file evidence.
         Call this after loading to populate the status field.
         """
+        # Abaqus creates a .lck file for the duration of a run — most reliable signal
+        lck_path = self.folder / f"{self.stem}.lck"
+        if lck_path.exists():
+            return JobStatus.RUNNING
+
         if self.sta_file and self.sta_file.exists():
             try:
                 text = self.sta_file.read_text(encoding="latin-1", errors="replace")
-                if "THE ANALYSIS HAS COMPLETED SUCCESSFULLY" in text.upper():
+                upper = text.upper()
+                if "THE ANALYSIS HAS COMPLETED SUCCESSFULLY" in upper:
                     return JobStatus.COMPLETED
+                if "ANALYSIS TERMINATED" in upper:
+                    return JobStatus.ABORTED
             except OSError:
                 pass
 
@@ -92,7 +100,8 @@ class AbaqusJob:
                 pass
 
         if self.sta_file and self.sta_file.exists():
-            return JobStatus.NOT_SUBMITTED  # sta exists but not completed
+            # sta written but no completion/error phrase and no lock → previous incomplete run
+            return JobStatus.NOT_SUBMITTED
 
         if self.inp_file and self.inp_file.exists():
             return JobStatus.NOT_SUBMITTED
