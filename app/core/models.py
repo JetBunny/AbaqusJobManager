@@ -100,8 +100,8 @@ class AbaqusJob:
                 pass
 
         if self.sta_file and self.sta_file.exists():
-            # sta written but no completion/error phrase and no lock → previous incomplete run
-            return JobStatus.NOT_SUBMITTED
+            # sta exists but no completion/error phrase and no lock → killed or crashed mid-run
+            return JobStatus.ABORTED
 
         if self.inp_file and self.inp_file.exists():
             return JobStatus.NOT_SUBMITTED

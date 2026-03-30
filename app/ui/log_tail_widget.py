@@ -151,6 +151,7 @@ class LogTailWidget(QWidget):
         if not msg_path:
             candidate = self._current_job.folder / f"{self._current_job.stem}.msg"
             if candidate.exists():
+                self._current_job.msg_file = candidate
                 msg_path = candidate
         if msg_path and msg_path.exists():
             self._reload(msg_path)

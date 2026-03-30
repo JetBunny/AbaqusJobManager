@@ -92,7 +92,6 @@ class JobRunnerPanel(QWidget):
 
         self._clear_btn = QPushButton("Clear Log")
         self._clear_btn.setFixedHeight(36)
-        self._clear_btn.clicked.connect(self._output_log.clear if hasattr(self, "_output_log") else lambda: None)
 
         btn_layout.addWidget(self._run_btn)
         btn_layout.addWidget(self._kill_btn)
@@ -124,8 +123,6 @@ class JobRunnerPanel(QWidget):
         self._output_log.setMaximumBlockCount(5000)  # keep last 5000 lines
         layout.addWidget(self._output_log, stretch=1)
 
-        # Fix clear button now that _output_log exists
-        self._clear_btn.clicked.disconnect()
         self._clear_btn.clicked.connect(self._output_log.clear)
 
     # ------------------------------------------------------------------ #
@@ -204,8 +201,8 @@ class JobRunnerPanel(QWidget):
     def _on_job_finished(self, exit_code: int) -> None:
         self._kill_btn.setEnabled(False)
         if self._current_job is not None:
-            has_inp = self._current_job.inp_file is not None
-            self._run_btn.setEnabled(has_inp)
+            inp = self._current_job.inp_file
+            self._run_btn.setEnabled(inp is not None and inp.exists())
         self.job_finished_signal.emit(exit_code)
 
     def _append_output(self, text: str) -> None:
