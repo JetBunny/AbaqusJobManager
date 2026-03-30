@@ -102,6 +102,9 @@ class JobTableModel(QAbstractTableModel):
             f.setBold(True)
             return f
 
+        if role == Qt.ItemDataRole.TextAlignmentRole:
+            return Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter
+
         if role == Qt.ItemDataRole.UserRole:
             return job  # allows proxy to retrieve job object
 
