@@ -91,10 +91,14 @@ class ProgressMonitorWidget(QWidget):
         if self._current_job is None:
             return
 
-        sta_path = self._current_job.sta_file
-        if not sta_path or not sta_path.exists():
+        job = self._current_job
+        # sta_file is set at scan time and may be None if the file was created
+        # after the last scan.  Always derive the expected path from the job
+        # folder so we pick it up as soon as Abaqus writes it.
+        sta_path = job.sta_file or (job.folder / f"{job.stem}.sta")
+        if not sta_path.exists():
             self._label.setText(
-                f"Progress: {self._current_job.display_name}  —  No .sta file yet"
+                f"Progress: {job.display_name}  —  No .sta file yet"
             )
             self._clear_plot()
             return
@@ -104,7 +108,7 @@ class ProgressMonitorWidget(QWidget):
 
         if not records:
             self._label.setText(
-                f"Progress: {self._current_job.display_name}  —  .sta file empty"
+                f"Progress: {job.display_name}  —  .sta file empty"
             )
             self._clear_plot()
             return
@@ -118,7 +122,7 @@ class ProgressMonitorWidget(QWidget):
 
         last = records[-1]
         self._label.setText(
-            f"Progress: {self._current_job.display_name}  —  "
+            f"Progress: {job.display_name}  —  "
             f"Step {last.step}, Inc {last.increment}, "
             f"Total Time = {last.total_time:.4g} s"
         )

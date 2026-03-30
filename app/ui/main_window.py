@@ -28,7 +28,7 @@ from app.ui.log_tail_widget import LogTailWidget
 from app.ui.progress_monitor import ProgressMonitorWidget
 from app.ui.settings_dialog import SettingsDialog
 
-_AUTO_REFRESH_INTERVAL_MS = 30_000   # 30 seconds
+_AUTO_REFRESH_INTERVAL_MS = 5_000   # 5 seconds
 
 
 class MainWindow(QMainWindow):
