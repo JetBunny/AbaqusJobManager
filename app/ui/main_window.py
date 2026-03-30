@@ -156,8 +156,8 @@ class MainWindow(QMainWindow):
             self._scan_and_refresh(notify_panels=True)
 
     def _auto_refresh(self) -> None:
-        """Background rescan — preserves selection, does not disrupt running jobs."""
-        if self._root_folder and not self._runner_panel.runner.is_running:
+        """Background rescan — preserves selection, re-applies RUNNING status if needed."""
+        if self._root_folder:
             self._scan_and_refresh(notify_panels=False)
 
     def _scan_and_refresh(self, notify_panels: bool = True) -> None:
