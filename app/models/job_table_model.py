@@ -147,14 +147,42 @@ class JobTableModel(QAbstractTableModel):
 # ------------------------------------------------------------------ #
 
 class JobFilterProxyModel(QSortFilterProxyModel):
-    """Case-insensitive filter across all text columns."""
+    """Multi-field filter: job_number, cae, model, job_local (all optional)."""
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
-        self.setFilterKeyColumn(-1)  # search all columns
+        self._filter_job_number: Optional[str] = None
+        self._filter_cae: Optional[int] = None
+        self._filter_model: Optional[int] = None
+        self._filter_job_local: Optional[int] = None
+
+    def set_filter(
+        self,
+        job_number: Optional[str] = None,
+        cae: Optional[int] = None,
+        model: Optional[int] = None,
+        job_local: Optional[int] = None,
+    ) -> None:
+        self._filter_job_number = job_number
+        self._filter_cae = cae
+        self._filter_model = model
+        self._filter_job_local = job_local
+        self.invalidateFilter()
+
+    def filterAcceptsRow(self, source_row: int, source_parent: QModelIndex) -> bool:
+        job: Optional[AbaqusJob] = self.sourceModel().job_at(source_row)
+        if job is None:
+            return True
+        if self._filter_job_number is not None and job.job_number != self._filter_job_number:
+            return False
+        if self._filter_cae is not None and job.cae != self._filter_cae:
+            return False
+        if self._filter_model is not None and job.model != self._filter_model:
+            return False
+        if self._filter_job_local is not None and job.job_local != self._filter_job_local:
+            return False
+        return True
 
     def job_at_proxy_row(self, proxy_row: int) -> Optional[AbaqusJob]:
         source_index = self.mapToSource(self.index(proxy_row, 0))
-        src_model: JobTableModel = self.sourceModel()
-        return src_model.job_at(source_index.row())
+        return self.sourceModel().job_at(source_index.row())
