@@ -221,11 +221,13 @@ class MainWindow(QMainWindow):
             self._running_job_stem = job.stem
             job.status = JobStatus.RUNNING
             self._browser.refresh_job_status(job)
+            self._browser.source_model().set_running_stem(job.stem)
         # Switch to MSG Tail tab automatically so user sees live output
         self._right_tabs.setCurrentWidget(self._log_tail)
 
     def _on_job_finished(self, exit_code: int) -> None:
         self._running_job_stem = None
+        self._browser.source_model().set_running_stem(None)
         self._progress_panel.on_job_finished()
         self._log_tail.on_job_finished()
         msg = "Job completed successfully." if exit_code == 0 else f"Job exited with code {exit_code}."

@@ -38,10 +38,14 @@ _STATUS_COLORS = {
 }
 
 
+_RUNNING_ROW_BG = QColor("#1a3a52")   # dark blue tint
+
+
 class JobTableModel(QAbstractTableModel):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._jobs: List[AbaqusJob] = []
+        self._running_stem: Optional[str] = None
 
     # ------------------------------------------------------------------ #
     # Public API
@@ -69,6 +73,16 @@ class JobTableModel(QAbstractTableModel):
         status_col = next(i for i, (_, a) in enumerate(_COLUMNS) if a == "status")
         idx = self.index(row, status_col)
         self.dataChanged.emit(idx, idx, [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.ForegroundRole])
+
+    def set_running_stem(self, stem: Optional[str]) -> None:
+        """Highlight the row whose job stem matches *stem* (None to clear)."""
+        self._running_stem = stem
+        if self._jobs:
+            self.dataChanged.emit(
+                self.index(0, 0),
+                self.index(len(self._jobs) - 1, len(_COLUMNS) - 1),
+                [Qt.ItemDataRole.BackgroundRole],
+            )
 
     # ------------------------------------------------------------------ #
     # QAbstractTableModel interface
@@ -101,6 +115,10 @@ class JobTableModel(QAbstractTableModel):
             f = QFont()
             f.setBold(True)
             return f
+
+        if role == Qt.ItemDataRole.BackgroundRole:
+            if self._running_stem and job.stem == self._running_stem:
+                return _RUNNING_ROW_BG
 
         if role == Qt.ItemDataRole.TextAlignmentRole:
             return Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter
